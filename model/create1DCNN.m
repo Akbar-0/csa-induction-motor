@@ -1,11 +1,15 @@
-function layers = create1DCNN(inputLength,numClasses)
-%CREATE1DCNN Return a 1D-CNN defined using 2D layers (time × 1).
-%   layers = CREATE1DCNN(inputLength,numClasses) returns an array of
-%   layers suitable for training with trainNetwork on time-series of
-%   length inputLength (single channel) and numClasses output classes.
+function layers = create1DCNN(inputLength,numClasses,numChannels)
+%   create1DCNN returns a 1D-CNN defined using 2D layers (time × 1).
+%   layers = create1DCNN(inputLength,numClasses,numChannels) returns an
+%   array of layers suitable for training with trainNetwork on time-series
+%   of length inputLength and numChannels channels.
+
+if nargin<3 || isempty(numChannels)
+    numChannels = 1;
+end
 
 layers = [
-    imageInputLayer([inputLength 1 1],'Normalization','zscore','Name','input')
+    imageInputLayer([inputLength 1 numChannels],'Normalization','zscore','Name','input')
 
     convolution2dLayer([9 1],16,'Padding','same','Name','conv1')
     batchNormalizationLayer('Name','bn1')

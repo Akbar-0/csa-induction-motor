@@ -1,16 +1,16 @@
 function Xaug = augmentSignals(X,augmentFactor)
-%AUGMENTSIGNALS Apply simple augmentations to 1D signals
-%   X is [L 1 1 N] numeric. augmentFactor is how many augmented copies
-%   to produce for each sample (default 1 -> produce one extra per sample).
+%   augmentSignals Apply simple augmentations to 1D signals
+%   X is [L 1 C N] numeric (C channels). augmentFactor is how many
+%   augmented copies to produce for each sample (default 1 -> one extra).
 
 if nargin<2 || isempty(augmentFactor)
     augmentFactor = 1;
 end
-[L,~,~,N] = size(X);
-Xaug = zeros(L,1,1,N*augmentFactor);
+[L,~,C,N] = size(X);
+Xaug = zeros(L,1,C,N*augmentFactor);
 idx = 1;
 for n=1:N
-    x = squeeze(X(:,:,1,n));
+    x = squeeze(X(:,:, :, n)); % [L C]
     for k=1:augmentFactor
         % additive gaussian noise
         snrFactor = 0.05 + 0.1*rand;
@@ -21,7 +21,8 @@ for n=1:N
         % small shift (circular)
         shift = round((-0.02 + 0.04*rand)*L);
         x1 = circshift(x1,shift);
-        Xaug(:,:,1,idx) = x1;
+        % store
+        Xaug(:,:,1:C,idx) = reshape(x1,[L 1 C]);
         idx = idx + 1;
     end
 end

@@ -1,3 +1,33 @@
+# VS Code
+.vscode/
+
+# OS-specific
+Thumbs.db
+Desktop.ini
+
+# Logs and temp
+*.log
+*.tmp
+*.bak
+*.swp
+*.swo
+
+# MATLAB artifacts
+*.asv          # autosave files
+*.mlx          # live scripts (if generated and large)
+*.fig          # figure files (binary)
+
+# Trained models and checkpoints
+trained1dcnn.mat
+models/
+
+# Cache folders (generic)
+**/cache/
+**/.cache/
+
+# Keep dataset CSVs tracked (do NOT ignore)
+# data/simulink/*.csv
+
 # Autosave files
 *.asv
 *.m~
@@ -38,3 +68,15 @@ codegen/
 # SimBiology backup files
 *.sbproj.backup
 *.sbproj.bak
+
+# Dataset
+data/
+
+# Temp. Resources
+resources/
+
+# Workspace Configurations
+*.code-workspace
+
+# Ignore all other files
+*.pdf

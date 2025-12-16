@@ -1,6 +1,6 @@
 function metrics = evaluateNetwork(net,XTest,YTest)
-%EVALUATENETWORK Compute accuracy, precision, recall, and confusion matrix
-%   metrics = EVALUATENETWORK(net,XTest,YTest)
+%   evaluateNetwork Compute accuracy, precision, recall, and confusion matrix
+%   metrics = evaluateNetwork(net,XTest,YTest)
 
 YPred = classify(net,XTest);
 acc = mean(YPred == YTest);

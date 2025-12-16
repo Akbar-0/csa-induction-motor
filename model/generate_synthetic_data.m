@@ -1,6 +1,8 @@
+% Deprecated due to usage of Simulink for data generation
+
 function [X,Y] = generate_synthetic_data(numPerClass,inputLength)
-%GENERATE_SYNTHETIC_DATA Create simple synthetic 1D signals for 4 classes
-%   [X,Y] = GENERATE_SYNTHETIC_DATA(numPerClass,inputLength) returns
+%   generate_synthetic_data Create simple synthetic 1D signals for 4 classes
+%   [X,Y] = generate_synthetic_data(numPerClass,inputLength) returns
 %   X sized [inputLength 1 1 N] and categorical labels Y of length N.
 
 if nargin<1 || isempty(numPerClass)
