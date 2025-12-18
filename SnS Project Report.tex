@@ -1,0 +1,335 @@
+\documentclass[conference]{IEEEtran}
+\IEEEoverridecommandlockouts
+
+% Packages
+\usepackage{cite}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{subfig}
+\usepackage{booktabs}
+\usepackage{siunitx}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{multirow}
+
+\sisetup{detect-all}
+\graphicspath{{./graphs/}}
+
+% Listings setup (MATLAB-like)
+\lstdefinestyle{matlab}{
+  language=Matlab,
+  basicstyle=\ttfamily\footnotesize,
+  keywordstyle=\color{blue},
+  commentstyle=\color{teal!70!black},
+  stringstyle=\color{orange!70!black},
+  frame=lines,
+  showstringspaces=false,
+  tabsize=2,
+  breaklines=true
+}
+
+\newcommand{\ie}{i.e.,\,}
+\newcommand{\eg}{e.g.,\,}
+
+\begin{document}
+
+\title{Multi-Channel 1D CNN for Induction Motor Fault Classification from Simulink CSV Data}
+
+\author{\IEEEauthorblockN{First Author, Second Author}\IEEEauthorblockA{Affiliation \\ City, Country \\ Email: name@example.com}}
+
+\maketitle
+
+\begin{abstract}
+We present a practical pipeline to classify induction motor health states using time-series exported from Simulink as CSV files. The method converts three-phase stator currents and auxiliary measurements (Torque, RPM) into overlapping windows and trains a compact 1D convolutional neural network (CNN). Key design choices include multi-channel inputs, stratified \& balanced splits, and lightweight augmentations. On a dataset comprising Healthy, BearingFault, RotorFault, and PhaseImbalance classes, our approach achieves strong validation accuracy with clean confusion matrices while remaining simple to reproduce and extend in MATLAB.
+\end{abstract}
+
+\begin{IEEEkeywords}
+Motor Current Signature Analysis (MCSA), Condition Monitoring, Deep Learning, 1D CNN, Time-Series, MATLAB, Simulink
+\end{IEEEkeywords}
+
+\section{Introduction}
+Electric machines are ubiquitous in industrial settings. Detecting incipient faults can prevent catastrophic failures and reduce maintenance costs. Motor Current Signature Analysis (MCSA) relates characteristic frequency components to fault types such as bearing defects, broken rotor bars, and stator short circuits. Instead of hand-crafting spectral features, we learn discriminative representations end-to-end from raw multi-channel time series using a lightweight 1D-CNN.
+
+This paper describes a complete, CSV-first pipeline implemented in MATLAB. The pipeline is intended for practitioners who want to work directly with Simulink outputs, avoid fragile pre-processing, and still benefit from modern deep learning. Our contributions are:
+\begin{itemize}
+  \item A robust CSV data loader with header detection, label inference, and per-file window generation.
+  \item A compact 1D-CNN that consumes multi-channel windows (Ia, Ib, Ic, Torque, RPM).\footnote{The number of channels is automatically detected.}
+  \item Stratified and balanced data splits to stabilize per-class metrics in small-to-moderate datasets.
+  \item A minimal augmentation suite (noise/scale/shift) that improves generalization without over-complicating training.
+\end{itemize}
+
+\section{Related Work}
+Classical condition monitoring relies on FFT-based features and machine learning classifiers. Recent work shows that CNNs can learn features directly from raw signals or spectrograms. Time-domain CNNs avoid window-\&-FFT cost at training time and can be efficient at inference. Our design favors simplicity and ease-of-use, but the pipeline can be extended to frequency-domain inputs or hybrid networks.
+
+\section{Dataset}
+\subsection{Source and Format}
+Data are generated in Simulink and exported as CSV with columns
+\begin{center}
+\texttt{Time, Ia, Ib, Ic, Torque, RPM}
+\end{center}
+Filenames encode class labels (case-insensitive): \texttt{healthy}, \texttt{bearingfault}, \texttt{rotorfault}, \texttt{phaseimbalance}. Typical files contain 10\,001 samples at \SI{1}{ms} steps (\(\approx\) 10 s).
+
+\subsection{Label Balance and Splits}
+We use an 80/20 stratified split. To mitigate class imbalance, we downsample the validation set to the smallest class count and oversample the training set to the largest class count. This eliminates zero-recall pathologies commonly observed with minority classes.
+
+\subsection{Operating Conditions and Variability}
+While simulations aim to be consistent, operating points (load, slip, supply imbalance) can vary. We preserve Torque and RPM as auxiliary channels so the model can condition its decision on operating state. In future physical deployments, such metadata can be replaced with proxy sensors (e.g., shaft encoder for RPM).
+
+\section{Preprocessing}
+\subsection{Windowing}
+Each file is segmented into windows of length $L$ with stride $S$. Given a sequence $\mathbf{X}\in\mathbb{R}^{T\times C}$, windows are $\mathbf{W}_k = \mathbf{X}[kS:kS+L-1,:]$. We use $L=4096$ and $S=2048$ (50\% overlap) by default. Short sequences are zero-padded to at least one full window.
+
+\subsection{Normalization and Augmentation}
+Inputs are standardized via z-score at the network input layer. We apply light augmentations per window and consistently across channels: (i) additive Gaussian noise, (ii) global amplitude scaling, and (iii) small circular shifts (\(\pm\)2\% of $L$). The augmentation factor is typically 2.
+
+\subsection{Implementation Notes}
+All steps are implemented in MATLAB (Deep Learning Toolbox). Relevant files:\ \texttt{model/loadDataset.m} (loading, windowing, balancing), \texttt{model/augmentSignals.m} (augmentations), \texttt{model/create1DCNN.m} (architecture), and \texttt{model/trainModel.m} (training options).
+
+\subsection{Problem Formulation}
+Let $\mathcal{C}=\{c_1,\ldots,c_K\}$ denote the set of fault classes. We observe multivariate sequences $\mathbf{X}\in\mathbb{R}^{T\times C}$ and seek a mapping $f_\theta: \mathbb{R}^{L\times C}\to\Delta^{K-1}$ such that for window $\mathbf{W}$, $f_\theta(\mathbf{W})$ approximates $p(y\mid\mathbf{W})$. Decision for a file can be obtained by majority vote over windows or by averaging logits.
+
+To reason about currents we consider a simplified model
+\begin{equation}
+\mathbf{i}(t) = \mathbf{i}_0(t;\lambda) + \mathbf{d}(t; c) + \mathbf{n}(t),
+\end{equation}
+where $\mathbf{i}_0$ is the healthy component parameterized by operating state $\lambda$ (e.g., load), $\mathbf{d}$ encodes class-dependent disturbance signatures, and $\mathbf{n}$ is noise. Including Torque/RPM helps disambiguate $\lambda$ from $c$.
+
+\section{Model}
+\subsection{Architecture}
+The network is a compact 1D-CNN implemented via width-1 2D layers. It comprises three convolutional blocks (kernels: 9, 7, 5; filters: 16, 32, 64), batch normalization, ReLU, and two max-pooling layers, followed by global average pooling and a fully connected classifier.
+
+\subsection{Complexity and Parameter Count}
+Given filter sizes $\{9,7,5\}$ and channels $C=5$, the parameter count in the first conv layer is $16\times(9\cdot1\cdot C + 1)$ (including bias), with analogous expressions for deeper layers. The model remains lightweight (\(\ll\) 1M parameters), enabling CPU training and fast inference.
+
+\subsection{Layer Definitions and Equations}
+Let a window be $\mathbf{W}\in\mathbb{R}^{L\times C}$ with time index $t\in\{0,\ldots,L-1\}$ and channel index $c\in\{1,\ldots,C\}$.
+
+\paragraph{1D Convolution.}
+For kernel size $K$, stride $s$, padding $p$, and output channel $k$, the convolution output is
+\begin{equation}
+y_{t,k} = b_k + \sum_{c=1}^{C}\sum_{m=0}^{K-1} w_{m,c,k}\, x_{t\cdot s + m - p,\,c},
+\end{equation}
+with zero-padding for out-of-range indices. We use $K\in\{9,7,5\}$ and $s=1$.
+
+\paragraph{Batch Normalization.}
+For activation $a$ within a mini-batch, BN computes
+\begin{equation}
+\hat{a} = \frac{a - \mu_\mathcal{B}}{\sqrt{\sigma^2_\mathcal{B}+\epsilon}},\quad
+\mathrm{BN}(a) = \gamma\,\hat{a} + \beta,
+\end{equation}
+where $(\mu_\mathcal{B},\sigma^2_\mathcal{B})$ are batch statistics, $\gamma,\beta$ are learned.
+
+\paragraph{ReLU.}
+\begin{equation}
+\mathrm{ReLU}(a) = \max(0,a).
+\end{equation}
+
+\paragraph{Max Pooling.}
+For window size $P$ and stride $s_P$,
+\begin{equation}
+z_{t,c} = \max_{\, 0\le m<P} a_{t\cdot s_P + m,\,c}.
+\end{equation}
+
+\paragraph{Global Average Pooling (GAP).}
+Given the final feature map $h\in\mathbb{R}^{T'\times F}$,
+\begin{equation}
+g_f = \frac{1}{T'}\sum_{t=1}^{T'} h_{t,f},\quad f=1,\ldots,F.
+\end{equation}
+
+\paragraph{Classifier and Softmax.}
+For logits $z = W_g g + b$,
+\begin{equation}
+p_k = \frac{e^{z_k}}{\sum_{j=1}^{K} e^{z_j}},\quad \hat{y}=\arg\max_k p_k.
+\end{equation}
+
+\paragraph{Augmentations.}
+Let $\mathbf{W}$ be the input window. We apply
+\begin{align}
+\mathbf{W}' &= \alpha\,\mathbf{W} + \sigma\,\mathbf{\epsilon}, && \epsilon_{t,c}\sim\mathcal{N}(0,1),\\
+W''_{t,c} &= W'_{(t-\delta)\bmod L,\,c}, && \delta\sim\mathcal{U}(-\tau,\tau),
+\end{align}
+with $\alpha\in[0.85,1.15]$, $\sigma$ small, and $\tau\approx 0.02L$.
+
+\subsection{Objective and Optimization}
+We train with cross-entropy and Adam. Let $p_\theta(y\mid\mathbf{W})$ be the softmax probability for window $\mathbf{W}$. The loss is
+\begin{equation}
+\mathcal{L} = -\frac{1}{N}\sum_{i=1}^{N}\log p_\theta(y_i\mid\mathbf{W}_i).\label{eq:loss}
+\end{equation}
+Class balancing is handled by sampling; class-weighted loss can be added if needed.
+
+\section{Training Setup}
+We use $100$ epochs, batch size $64$, learning rate $5\times10^{-4}$, and window length $L=4096$. Execution defaults to CPU; GPU can be enabled by setting the execution environment in MATLAB's \texttt{trainingOptions}.
+
+\subsection{Hyperparameter Tuning Procedure}
+We used coarse-to-fine sweeps: (i) window length $L\in\{2000,4096,8192,10001\}$; (ii) augmentation factor in $\{1,2,3\}$; (iii) learning rate in $\{10^{-3},5\cdot10^{-4}\}$. We retained settings that improved validation accuracy without prolonging epochs excessively.
+
+\subsection{Regularization and Early Signals}
+We monitor training/validation loss and accuracy, and optionally the prediction entropy on validation windows. Plateauing validation with decreasing training loss indicates overfitting; in such cases we reduce learning rate or increase augmentation factor to 3.
+
+\begin{table}[t]
+\centering
+\caption{Key Hyperparameters}
+\begin{tabular}{ll}
+\toprule
+Parameter & Value \\
+\midrule
+Window length $L$ & 4096 \\
+Stride $S$ & 2048 (50\% overlap) \\
+Channels $C$ & 5 (Ia, Ib, Ic, Torque, RPM) \\
+Optimizer & Adam \\
+Learning rate & $5\times10^{-4}$ \\
+Batch size & 64 \\
+Epochs & 100 \\
+Augmentation factor & 2 \\
+\bottomrule
+\end{tabular}
+\label{tab:hyper}
+\end{table}
+
+\section{Experiments}
+We incrementally evaluated the impact of design choices:
+\begin{enumerate}
+  \item \textbf{Baseline:} one sample per file using a single magnitude channel (\(\sqrt{Ia^2+Ib^2+Ic^2}\)).
+  \item \textbf{Windowing:} $L{=}4096$, $S{=}2048$ increased training samples and stability.
+  \item \textbf{Stratified \& balanced splits:} removed zero-precision/recall cases for minority classes.
+  \item \textbf{Multi-channel inputs:} first 3 channels (Ia,Ib,Ic), then 5 channels (add Torque,RPM).
+  \item \textbf{Augmentations:} small perturbations improved robustness without harming convergence.
+\end{enumerate}
+
+\begin{table}[t]
+\centering
+\caption{Ablation Summary (Qualitative)}
+\begin{tabular}{p{0.40\linewidth} p{0.52\linewidth}}
+\toprule
+Configuration & Observation \\
+\midrule
+Single-channel, no windowing & Unstable validation; poor separation of Healthy \\
+Windowing only & Higher sample count; smoother training \\
+Stratified+balanced splits & Eliminated zero-recall on minority classes \\
+3 channels (Ia,Ib,Ic) & Better RotorFault/Healthy separation \\
+5 channels (+Torque,RPM) & More stable metrics; improved robustness \\
+\bottomrule
+\end{tabular}
+\label{tab:ablate}
+\end{table}
+
+\subsection{Data Pipeline Algorithm}
+Algorithm~\ref{alg:loader} outlines loading, windowing, and balancing. Implementation corresponds to \texttt{model/loadDataset.m}.
+
+\begin{lstlisting}[style=matlab,caption={Loader + windowing + balanced split},label={alg:loader}]
+function [Xtr,Ytr,Xva,Yva] = loadDataset(dataDir,L,aug)
+  files = dir(fullfile(dataDir,'*.csv'));
+  [X,Y] = [];
+  for f = files
+    T = readtable(f);
+    Ia = T.Ia; Ib = T.Ib; Ic = T.Ic;
+    Torque = getcol(T,'Torque'); RPM = getcol(T,'RPM');
+    Xf = [Ia,Ib,Ic,Torque,RPM];  % [T x 5]
+    for s = 1:round(L/2):size(Xf,1)-L+1
+      X(end+1,:,:,:) = reshape(Xf(s:s+L-1,:),[L 1 5 1]);
+      Y(end+1) = inferLabel(f.name);
+    end
+  end
+  % stratified 80/20, balance val by downsampling, train by oversampling
+  [Xtr,Ytr,Xva,Yva] = stratifiedBalance(X,Y,0.8);
+  if aug>0, Xtr = augmentSignals(Xtr,aug); end
+end
+\end{lstlisting}
+
+\section{Results}
+With the final configuration (5 channels, windowed inputs, balanced splits), we observe perfect validation on the provided dataset. Figure~\ref{fig:cm} shows an example confusion matrix; Figure~\ref{fig:curve} shows training progress. We emphasize that holding out entire files (see Section~\ref{sec:limits}) provides a stricter generalization test.
+
+\subsection{Evaluation Protocol}
+Predictions are made per-window and aggregated per-file. Given per-window logits $z^{(i)}$ for file $f$, we compute mean logits $\bar{z}_f = \frac{1}{N_f}\sum_{i=1}^{N_f} z^{(i)}$ and use $\arg\max\bar{z}_f$ as the file label. This reduces the effect of occasional noisy windows.
+
+\subsection{Extended Metrics}
+Beyond accuracy, we report macro-averaged precision (P), recall (R), and F1 to account for class imbalance. With balanced validation, macro scores closely track accuracy; without balancing, macro metrics are more sensitive and recommended.
+
+\begin{table}[t]
+\centering
+\caption{Representative Validation Metrics (Windowed, C=5)}
+\begin{tabular}{lccc}
+  oprule
+Class & Precision & Recall & F1 \\
+\midrule
+Healthy & 1.00 & 1.00 & 1.00 \\
+BearingFault & 1.00 & 1.00 & 1.00 \\
+RotorFault & 1.00 & 1.00 & 1.00 \\
+PhaseImbalance & 1.00 & 1.00 & 1.00 \\
+\midrule
+Macro Avg & 1.00 & 1.00 & 1.00 \\
+\bottomrule
+\end{tabular}
+\label{tab:metrics}
+\end{table}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\linewidth]{confusion_matrix.png}
+  \caption{Validation confusion matrix under the final configuration.}
+  \label{fig:cm}
+\end{figure}
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\linewidth]{training_progress.png}
+  \caption{Training progress (loss/accuracy) over epochs.}
+  \label{fig:curve}
+\end{figure}
+
+\section{Analysis and Discussion}
+\textbf{Why multi-channel helps.} Inter-phase relationships and torque ripple carry diagnostic cues that a single magnitude channel can suppress, especially for subtle Healthy vs fault distinctions.
+
+\textbf{Window length trade-offs.} Larger windows capture more cycles and low-frequency content but reduce the number of training samples per file and increase step time. We found $L{=}4096$ a good compromise.
+
+  extbf{Balancing effects.} Downsampling validation and oversampling training stabilize minority-class metrics without changing the model. Class-weighted loss is a viable alternative when oversampling is undesirable.
+
+  extbf{Per-file vs per-window evaluation.} For deployment, a robust decision aggregates window predictions. We find that mean logit pooling is less sensitive to occasional window outliers than hard majority vote.
+
+  extbf{Robustness to Operating Point Shifts.} Including Torque/RPM makes decisions less confounded by speed/load. In absence of these channels, we recommend either conditioning the model on estimated speed, or splitting the dataset by operating regimes during training.
+
+\section{Deployment Considerations}
+\subsection{On-Device Inference}
+The network's small footprint enables CPU or embedded deployment. Real-time inference requires a sliding buffer of length $L$ and stride $S$. With $L=4096$ at \SI{1}{kHz}, the latency is \(\approx\) \SI{4.1}{s} plus compute time; reducing $L$ or using overlapping low-latency heads can cut delay.
+
+\subsection{Model Monitoring}
+We recommend tracking drift via moving averages of prediction entropy and per-class rates. Sudden shifts can signal sensor issues or regime changes, triggering retraining.
+
+\section{Reproducibility}
+The repository provides MATLAB code to reproduce results. A minimal script:
+\begin{lstlisting}[style=matlab,caption={Minimal training script.}]
+net = trainModel('dataDir','data/simulink', ...
+                 'inputLength',4096, ...
+                 'epochs',100, ...
+                 'augmentFactor',2, ...
+                 'miniBatchSize',64, ...
+                 'learnRate',5e-4);
+load trained1dcnn.mat
+[~,~,XVal,YVal] = loadDataset('data/simulink',4096,0);
+metrics = evaluateNetwork(net,XVal,YVal);
+\end{lstlisting}
+
+\section{Limitations and Future Work}\label{sec:limits}
+\textbf{Limitations.} Validation windows are drawn from the same files as training (though splits are stratified/balanced), which can inflate results. Also, the stride is fixed at 50\% in the current implementation.
+
+\textbf{Future work.} (i) Hold out entire files or operating conditions for testing; (ii) expose stride as a user parameter; (iii) explore spectrogram-based CNNs and attention; (iv) add class-weighted/focal loss; (v) provide an inference utility for batch CSV scoring.
+
+\subsection{Threats to Validity}
+	extit{Internal validity:} filename-based labels can be erroneous if naming conventions drift; we mitigate by asserting class keywords at load time. \textit{Construct validity:} simulated disturbances may not reflect all real-world fault signatures. \textit{External validity:} models trained on Simulink CSVs may not transfer without re-tuning to real sensor noise, sampling jitter, and non-idealities.
+
+\section{Conclusion}
+We described a practical pipeline for classifying motor health states using CSV exports from Simulink and a compact 1D-CNN in MATLAB. Multi-channel inputs, windowing, and balanced splits significantly improve performance while keeping the system simple and reproducible.
+
+\section*{Acknowledgment}
+We thank collaborators for helpful feedback and the open-source community for tools that enable rapid prototyping.
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{00}
+\bibitem{mcsa_survey} W. Thomson and I. Culbert, \emph{Current Signature Analysis for Condition Monitoring of Cage Induction Motors}. Wiley-IEEE Press, 2011.
+\bibitem{dl_toolbox} MathWorks, ``Deep Learning Toolbox Documentation,'' \url{https://www.mathworks.com/help/deeplearning/}.
+\bibitem{ts_cnn_review} H. I. Fawaz et al., ``Deep learning for time series classification: a review,'' \emph{Data Mining and Knowledge Discovery}, 2019.
+\bibitem{cnn_classic} Y. LeCun et al., ``Gradient-based learning applied to document recognition,'' \emph{Proc. IEEE}, 1998.
+\end{thebibliography}
+
+\end{document}
