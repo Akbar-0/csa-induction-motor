@@ -1,4 +1,36 @@
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
 # VS Code
+.vscode/
+
+# MATLAB/Simulink backups and caches
+*.asv
+*.m~
+*~
+slprj/
+*.slxc
+simulinkcache.slxc
+*.autosave
+
+# Logs and temp
+*.log
+*.tmp
+~$*
+
+# LaTeX build artifacts
+*.tex
+*.aux
+*.bbl
+*.blg
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc# VS Code
 .vscode/
 
 # OS-specific

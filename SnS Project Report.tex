@@ -36,7 +36,10 @@
 
 \title{Multi-Channel 1D CNN for Induction Motor Fault Classification from Simulink CSV Data}
 
-\author{\IEEEauthorblockN{First Author, Second Author}\IEEEauthorblockA{Affiliation \\ City, Country \\ Email: name@example.com}}
+\author{\IEEEauthorblockN{Akbar Shah Zar, Abdul Sammi  Khan}\IEEEauthorblockA{
+School of Electrical Engineering and Computer Science (SEECS),\\
+National University of Sciences and Technology (NUST), Pakistan\\
+Emails: \{amughal.bee23seecs, akhan.bee23seecs\}@seecs.edu.pk}}
 
 \maketitle
 
@@ -278,6 +281,16 @@ Macro Avg & 1.00 & 1.00 & 1.00 \\
   \label{fig:curve}
 \end{figure}
 
+\subsection{Evaluation}
+We report macro-averaged precision, recall, and F1 across classes and visualize per-class metrics for interpretability. Figure~\ref{fig:eval} summarizes evaluation results; it complements the confusion matrix in Figure~\ref{fig:cm} and the training curves in Figure~\ref{fig:curve}.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\linewidth]{confusion_matrix.png}
+  \caption{Evaluation metrics per class (precision, recall) and macro averages.}
+  \label{fig:eval}
+\end{figure}
+
 \section{Analysis and Discussion}
 \textbf{Why multi-channel helps.} Inter-phase relationships and torque ripple carry diagnostic cues that a single magnitude channel can suppress, especially for subtle Healthy vs fault distinctions.
 
@@ -297,7 +310,7 @@ The network's small footprint enables CPU or embedded deployment. Real-time infe
 We recommend tracking drift via moving averages of prediction entropy and per-class rates. Sudden shifts can signal sensor issues or regime changes, triggering retraining.
 
 \section{Reproducibility}
-The repository provides MATLAB code to reproduce results. A minimal script:
+The repository provides MATLAB code to reproduce results. The full codebase is available at \url{https://github.com/Akbar-0/csa-induction-motor.git}. A minimal script:
 \begin{lstlisting}[style=matlab,caption={Minimal training script.}]
 net = trainModel('dataDir','data/simulink', ...
                  'inputLength',4096, ...
